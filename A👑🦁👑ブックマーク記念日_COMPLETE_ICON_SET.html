@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>黒×金 テンプレ管理（IndexedDB + ZIP対応）</title>
+  <style>
+/* (元の CSS をほぼそのまま保持) */
+:root{
+  --bg:#090707; --panel:#110f0e; --muted:#1a1716; --gold:#c99a2b; --gold-2:#ffcf6b;
+  --accent-2:#4faaff; --muted-text:#9e9e9e; --card-bg:#0b0b0b; --max-width:1100px; --radius:12px;
+}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;padding:18px;background:var(--bg);color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--max-width);margin:0 auto}h1{color:var(--gold);margin:0 0 14px 0;font-size:20px}.panel{background:linear-gradient(180deg,#0f0f0f,var(--panel));padding:14px;border-radius:var(--radius);margin-bottom:14px;box-shadow:0 8px 26px rgba(0,0,0,0.55);border:1px solid rgba(201,154,43,0.06)}.row{display:flex;flex-wrap:wrap;gap:10px}.col{flex:1;min-width:0}.label{font-size:13px;color:var(--muted-text)}input[type="text"],input[type="date"],input[type="time"],textarea,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:var(--muted);color:#fff;margin-top:8px;font-size:14px}textarea{min-height:90px;resize:vertical}button{background:var(--gold);color:#000;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-weight:700}button.secondary{background:#2b2b2b;color:#fff}.small{padding:6px 10px;font-size:13px}.controls{Display:flex;gap:8px;flex-wrap:wrap;align-items:center}.muted{color:var(--muted-text);font-size:13px}
+
+/* improved search panel (mobile-optimized, 2-row) */
+.search-panel{border:1px solid rgba(255,255,255,0.04);padding:14px;border-radius:12px;background:#0e0e0e}
+.search-title{font-weight:800;color:var(--gold);font-size:16px;margin-bottom:8px}
+.search-row{display:flex;gap:8px;align-items:center}
+.search-input{flex:1;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:#141313;color:#fff;font-size:15px}
+.search-actions{display:flex;gap:8px;align-items:center;width:100%}
+.category-select{width:160px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:#141313;color:#fff}
+.export-btn{background:var(--gold);padding:10px 12px;border-radius:10px;font-weight:700;color:#000}
+.backup-area{width:100%;height:90px;margin-top:8px;border-radius:10px;background:#070707;border:1px solid rgba(255,255,255,0.08);color:#fff;padding:8px;font-size:13px}
+
+/* rest */
+.cards{display:flex;flex-direction:column;gap:12px;margin-top:12px}.card{background:linear-gradient(180deg,#0f0f0f,var(--card-bg));border-radius:10px;padding:12px;box-shadow:0 8px 22px rgba(0,0,0,0.55);border:1px solid rgba(201,154,43,0.04);display:flex;flex-direction:column;gap:10px}.card-top{display:flex;gap:12px;align-items:flex-start}.title{font-weight:800;color:var(--gold);font-size:16px;line-height:1.15;word-break:break-word}.meta{font-size:13px;color:var(--muted-text)}.badge-today{display:inline-block;background:var(--gold-2);color:#000;padding:6px 8px;border-radius:8px;font-weight:700;margin-right:8px;font-size:13px}
+.thumb-top{width:100%;height:180px;border-radius:8px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center}.thumb-top img{width:100%;height:100%;object-fit:cover}.thumb-carousel{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-top:6px}.thumb-carousel .thumb{flex:0 0 auto;width:92px;height:72px;border-radius:8px;overflow:hidden;background:#060606;border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center}.thumb-carousel .thumb img{width:100%;height:100%;object-fit:cover}
+.item-group{background:#121212;padding:8px;border-radius:8px;margin-top:8px}
+
+/* fold inside card (kept for compatibility but we won't use fold bodies for popup items) */
+.fold-header {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #141313;
+  border-radius: 8px;
+  color: var(--gold);
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+.fold-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .28s ease, padding .28s ease;
+  padding: 0 4px;
+}
+.fold-body.open { padding: 10px 4px; }
+.fold-icon { font-size: 18px; color:var(--gold); }
+
+/* URL / memo content (was used inline; now items open modal instead) */
+.card-url, .card-url a { word-break: break-all; overflow-wrap: anywhere; white-space: normal; display:block; line-height:1.4; color:var(--accent-2); text-decoration:underline; }
+.card-memo { white-space:pre-wrap; color:#ddd; background:#070707; padding:8px; border-radius:6px; }
+
+/* modal gallery */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px}.modal{width:100%;max-width:1000px;background:#000;padding:12px;border-radius:10px;position:relative;border:1px solid rgba(201,154,43,0.06)}.modal img{width:100%;height:72vh;object-fit:contain;border-radius:6px;background:#000}.modal .close{position:absolute;top:10px;right:10px;background:#111;color:#fff;padding:8px;border-radius:6px;border:none}.modal .nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:10px;border-radius:6px;border:none}.modal .nav.left{left:10px}.modal .nav.right{right:10px}
+.ics-modal{max-width:420px;padding:12px;background:#0b0b0b;border-radius:10px;color:#fff}.ics-row{display:flex;gap:8px;align-items:center;margin-top:8px}.ics-row input[type="number"]{width:90px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:#121212;color:#fff}.ics-row input[type="time"]{padding:8px;border-radius:6px;background:#121212;border:1px solid rgba(255,255,255,0.06)}
+
+/* accordion (templates) */
+.accordion { margin-top: 12px; padding: 0; overflow: hidden; }
+.accordion-header {
+  padding: 14px;
+  font-weight: 700;
+  font-size: 16px;
+  background: #121212;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: var(--gold);
+}
+.accordion-body { max-height: 0; overflow: hidden; transition: max-height .35s ease; padding:0 6px; }
+.accordion.open .accordion-body { padding: 12px 6px; }
+#accordionIcon { font-size: 18px; }
+
+/* item row for popup trigger */
+.item-row {
+  display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:8px;border-radius:8px;background:#0e0e0e;border:1px solid rgba(255,255,255,0.03);
+}
+.item-row .label { color:#ddd; font-weight:700; }
+.item-row .trigger-btn { padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(201,154,43,0.06);color:var(--gold);font-weight:800;cursor:pointer; }
+
+/* content-modal for URL/memo */
+.content-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  padding: 20px;
+}
+.content-modal {
+  width: 100%;
+  max-width: 520px;
+  background: #0b0b0b;
+  border: 1px solid rgba(201,154,43,0.18);
+  border-radius: 12px;
+  padding: 18px;
+  color: #fff;
+  position: relative;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.content-modal h3 { margin-top: 0; color: var(--gold); font-size: 18px; }
+.content-modal .close { position: absolute; top: 10px; right: 10px; background: #222; color: #fff; border: none; padding: 6px 10px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.content-modal .content-body { margin-top: 12px; color:#ddd; white-space:pre-wrap; word-break:break-word; }
+.content-modal a { color: var(--accent-2); word-break: break-all; font-weight:700; text-decoration:underline; font-size:16px; }
+
+/* responsive */
+@media (max-width:1024px){:root{--max-width:920px}.thumb-top{height:160px}.modal img{height:68vh}}
+@media (max-width:720px){body{padding:12px}.wrap{padding:0 6px}h1{font-size:18px}.panel{padding:12px}.row{gap:8px}.card-top{flex-direction:column;gap:8px}.thumb-top{height:150px}.thumb-carousel .thumb{width:84px;height:64px}.ics-modal{width:90vw}.modal img{height:60vh}.form-grid{display:block}.search-row{flex-direction:column;align-items:stretch}.search-actions{flex-direction:column;align-items:stretch}.category-select{width:100%}}
+/* NOTE: previously #imagesPreview,#thumbPreview were forced hidden; removed so edit previews show */
+#imagesPreview{display:block}
+#thumbPreview{display:block}
+button:focus,input:focus,select:focus,textarea:focus{outline:2px solid rgba(255,200,60,0.18);outline-offset:2px;border-color:rgba(255,200,60,0.12)}
+  </style>
+
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- App Icon / PWA Settings -->
+  <link rel="icon" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#090707">
+
+</head>
+<body>
+  <div class="wrap">
+    <h1>テンプレ管理 — 黒×金（IndexedDB + ZIP）</h1>
+
+    <!-- SEARCH PANEL -->
+    <div class="panel search-panel" id="searchPanel">
+      <div class="search-title">🔍 検索</div>
+      <div class="search-row">
+        <input id="search" class="search-input" type="text" placeholder="キーワード（タイトル / カテゴリ / 項目 / メモ）">
+      </div>
+      
+<div class="search-actions" style="margin-top:10px">
+  <select id="filterCategory" class="category-select"><option value="">全カテゴリー</option></select>
+  <div style="flex:1"></div>
+
+  <button id="exportAllBtn" class="export-btn small">全体バックアップ (ZIP)</button>
+  <button id="exportByCategoryBtn" class="export-btn small" style="margin-left:6px">カテゴリ別バックアップ</button>
+  <button id="exportSelectedCategoryBtn" class="export-btn small" style="margin-left:6px">選択カテゴリをバックアップ</button>
+</div>
+
+        <button id="exportBtn" class="export-btn small">バックアップ (ZIP)</button>
+      </div>
+      <textarea id="backupArea" class="backup-area" placeholder="※ 旧方式の JSON バックアップ（非推奨）"></textarea>
+      <div class="controls" style="margin-top:8px">
+        <button id="importBtn" class="small secondary" onclick="onImportClicked()">インポート</button>
+        <div style="flex:1" class="muted">※ ZIP を選択してインポート（推奨）</div>
+      </div>
+    </div>
+
+    <!-- FORM -->
+    <div class="panel" id="formPanel">
+      <div class="form-grid">
+        <div>
+          <div class="row">
+            <div class="col"><div class="label">タイトル</div><input id="title" type="text" placeholder="例: サービスAの設定"></div>
+            <div style="width:160px"><div class="label">記念日</div><input id="anniv" type="date"></div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="label">項目（項目名の下に内容）</div>
+            <div id="itemsContainer"></div>
+            <div class="controls" style="margin-top:8px">
+              <button class="small" onclick="addItem('url')">＋ 項目＋URL</button>
+              <button class="small" onclick="addItem('memo')">＋ 項目＋メモ</button>
+            </div>
+            <div class="muted" style="margin-top:6px;">URLは直リンク、メモは改行可。</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="label">通常画像（複数）</div>
+            <input id="imgInput" type="file" accept="image/*" multiple>
+            <div id="imagesPreview" class="image-preview muted"></div>
+            <div class="muted" style="margin-top:6px;">フォーム内プレビューは表示されます（編集時に削除可能）</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="margin-bottom:10px"><div class="label">カテゴリー</div><input id="category" type="text" placeholder="例: 仕事"></div>
+          <div style="margin-bottom:10px"><div class="label">サムネ画像（当日のみ表示）</div><input id="thumbInput" type="file" accept="image/*"><div id="thumbPreview" class="image-preview muted" style="margin-top:8px"></div><div class="muted">フォーム内プレビューは表示されます（編集時に削除可能）</div></div>
+          <div style="margin-top:10px"><div class="controls"><button id="saveBtn">保存</button><button id="clearBtn" class="secondary">フォームをクリア</button></div><div class="muted" style="margin-top:8px">画像は IndexedDB に保存</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEMPLATE ACCORDION -->
+    <div class="panel accordion" id="templateAccordion">
+      <div class="accordion-header" onclick="toggleAccordion()">
+        <span>📁 テンプレート一覧</span>
+        <span id="accordionIcon">＋</span>
+      </div>
+      <div class="accordion-body" id="templateListContainer">
+        <div id="templateList"></div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:8px">カード一覧（当日 → 1週間以内 → その他）</h2>
+    <div id="cardsContainer" class="cards"></div>
+
+    <div class="panel" style="margin-top:12px"><h3 style="margin-top:0">補助：一括操作</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="small secondary" onclick="exportAllToClipboard()">全データをクリップボードへ</button>
+        <button class="small secondary" onclick="clearAllData()">全データ削除（ローカル保存）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal / ics (existing) -->
+  <div id="modalBg" class="modal-bg" role="dialog" aria-modal="true">
+    <div class="modal" id="modalInner">
+      <button class="close" onclick="closeModal()">✕</button>
+      <button class="nav left" onclick="modalPrev()">◀</button>
+      <button class="nav right" onclick="modalNext()">▶</button>
+      <div id="modalImgWrap" style="text-align:center"></div>
+      <div id="modalCaption" style="text-align:center;margin-top:8px;color:#ccc"></div>
+    </div>
+  </div>
+
+  <div id="icsModalBg" class="modal-bg" style="align-items:center;justify-content:center;">
+    <div class="ics-modal" id="icsModal" style="display:none;">
+      <h3>カレンダーに登録</h3><div id="icsTitle" style="font-weight:700;color:var(--gold);margin-top:6px"></div>
+      <div style="margin-top:8px">通知タイミング：</div>
+      <div class="ics-row"><select id="icsPreset"><option value="0">当日</option><option value="1">前日</option><option value="7">7日前</option><option value="custom">カスタム（N日前）</option></select><input id="icsCustomDays" type="number" min="0" placeholder="N" style="display:none"></div>
+      <div style="margin-top:8px">（オプション）カレンダー時間：</div>
+      <div class="ics-row" style="margin-top:6px"><label style="width:48%"><div class="muted" style="margin-bottom:6px">開始時間</div><input id="icsStartTime" type="time" placeholder="09:00"></label><label style="width:48%"><div class="muted" style="margin-bottom:6px">終了時間</div><input id="icsEndTime" type="time" placeholder="10:00"></label></div>
+      <div class="controls" style="margin-top:10px"><button id="icsGenBtn">ICSを生成してダウンロード</button><button id="icsCancelBtn" class="secondary">キャンセル</button></div>
+      <div style="margin-top:8px" class="muted">ダウンロード後、端末のカレンダーで保存してください。</div>
+    </div>
+  </div>
+
+  <!-- NEW: content modal for URL / MEMO -->
+  <div id="contentModalBg" class="content-modal-bg" aria-hidden="true">
+    <div class="content-modal" role="dialog" aria-modal="true" aria-labelledby="contentModalTitle">
+      <button class="close" onclick="closeContentModal()">✕</button>
+      <h3 id="contentModalTitle"></h3>
+      <div id="contentModalBody" class="content-body"></div>
+    </div>
+  </div>
+
+<script>
+/* ---------------- image store / helpers (IndexedDB-backed) ---------------- */
+
+/* 画像をリサイズして Base64 に変換 */
+function fileToResizedDataURL(file, maxSize = 1280) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        let w = img.width;
+        let h = img.height;
+
+        if (w > h) {
+          if (w > maxSize) {
+            h = Math.round((h * maxSize) / w);
+            w = maxSize;
+          }
+        } else {
+          if (h > maxSize) {
+            w = Math.round((w * maxSize) / h);
+            h = maxSize;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85); // slightly more compression
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* constants */
+const IMAGE_STORE_KEY='imageStore_base64_v1',MAX_LONG_SIDE=1280,JPEG_QUALITY=0.85;
+
+/* --- IndexedDB helpers --- */
+function openImageDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('ImageStoreDB', 1);
+    req.onupgradeneeded = function(e){
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('images')){
+        const store = db.createObjectStore('images', { keyPath: 'id' });
+        store.createIndex('id', 'id', { unique: true });
+      }
+    };
+    req.onsuccess = function(e){ resolve(e.target.result); };
+    req.onerror = function(e){ reject(e.target.error); };
+  });
+}
+
+async function saveDataUrlToStore(dataUrl, idHint){
+  if(!dataUrl) return null;
+  const id = idHint || crypto.randomUUID();
+  try{
+    const db = await openImageDB();
+    const tx = db.transaction('images','readwrite');
+    const store = tx.objectStore('images');
+    await new Promise((res, rej) => {
+      const putReq = store.put({id:id, dataUrl:dataUrl});
+      putReq.onsuccess = ()=>res(true);
+      putReq.onerror = (e)=>rej(e.target.error);
+    });
+    tx.oncomplete = ()=>{ db.close(); };
+    return id;
+  }catch(e){
+    console.error('saveDataUrlToStore error', e);
+    return null;
+  }
+}
+
+async function getDataUrlById(id){
+  if(!id) return null;
+  try{
+    const db = await openImageDB();
+    const tx = db.transaction('images','readonly');
+    const store = tx.objectStore('images');
+    const val = await new Promise((res, rej) => {
+      const getReq = store.get(id);
+      getReq.onsuccess = ()=>res(getReq.result ? getReq.result.dataUrl : null);
+      getReq.onerror = (e)=>rej(e.target.error);
+    });
+    db.close();
+    return val;
+  }catch(e){
+    console.error('getDataUrlById error', e);
+    return null;
+  }
+}
+
+async function deleteDataUrlById(id){
+  if(!id) return true;
+  try{
+    const db = await openImageDB();
+    const tx = db.transaction('images','readwrite');
+    const store = tx.objectStore('images');
+    await new Promise((res, rej) => {
+      const delReq = store.delete(id);
+      delReq.onsuccess = ()=>res(true);
+      delReq.onerror = (e)=>rej(e.target.error);
+    });
+    db.close();
+    return true;
+  }catch(e){
+    console.error('deleteDataUrlById error', e);
+    return false;
+  }
+}
+
+/* Load localStorage imageStore (used only for migration) */
+function loadImageStore(){try{return JSON.parse(localStorage.getItem(IMAGE_STORE_KEY)||'{}')||{}}catch(e){return {}}}
+function persistImageStore(s){try{localStorage.setItem(IMAGE_STORE_KEY,JSON.stringify(s));return true}catch(e){console.error(e);return false}}
+
+/* Migrate existing localStorage imageStore -> IndexedDB, preserving keys.
+   After successful migration, the localStorage key is removed.
+*/
+async function migrateLocalImageStoreToIndexedDB(){
+  try{
+    const s = loadImageStore();
+    const keys = Object.keys(s||{});
+    if(!keys.length) return;
+    // put each entry with same key
+    for(const k of keys){
+      try{
+        const dataUrl = s[k];
+        if(!dataUrl) continue;
+        await saveDataUrlToStore(dataUrl, k);
+      }catch(e){ console.warn('migrate image fail', k, e); }
+    }
+    // remove localStorage copy to save space
+    try{ localStorage.removeItem(IMAGE_STORE_KEY); }catch(e){}
+    console.log('migrated', keys.length, 'images to IndexedDB');
+  }catch(e){ console.error('migration failed', e); }
+}
+
+/* Merge provided imageStore object into IndexedDB (append-only: do not overwrite existing keys) */
+async function mergeImageStoreIntoIndexedDB(obj){
+  if(!obj || typeof obj !== 'object') return;
+  const keys = Object.keys(obj);
+  for(const k of keys){
+    try{
+      const exists = await getDataUrlById(k);
+      if(!exists){
+        await saveDataUrlToStore(obj[k], k);
+      }
+    }catch(e){ console.warn('merge image fail', k, e); }
+  }
+}
+
+/* Utility to export a small sample or full imageStore (careful with size) */
+async function exportImageStoreAsObject(limitEntries){
+  const out = {};
+  try{
+    const db = await openImageDB();
+    const tx = db.transaction('images','readonly');
+    const store = tx.objectStore('images');
+    await new Promise((res, rej) => {
+      const req = store.openCursor();
+      let cnt = 0;
+      req.onsuccess = function(e){
+        const cur = e.target.result;
+        if(cur){
+          out[cur.key] = cur.value.dataUrl;
+          cnt++;
+          if(limitEntries && cnt>=limitEntries){ res(true); return; }
+          cur.continue();
+        } else {
+          res(true);
+        }
+      };
+      req.onerror = (e)=>rej(e.target.error);
+    });
+    db.close();
+  }catch(e){ console.error('exportImageStore failed', e); }
+  return out;
+}
+
+/* ---------------- app state ---------------- */
+let cards=[], templates=[], editingId=null, icsTargetCardId=null;
+let currentExistingImageIds=[], currentExistingThumbId=null;
+const FOLD_STORE_KEY='cardFolds_v1'; // stores object: { "<cardId>": {"idx-0":true, "idx-1":false, ...}, ... }
+
+function q(id){return document.getElementById(id)}
+function makeId(){return crypto.randomUUID()}
+function now(){return Date.now()}
+function escapeHtml(s){if(!s && s!==0) return '';return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
+function escapeAttr(s){return (s||'').replaceAll('"','%22').replaceAll("'",'%27')}
+
+/* ---------------- storage load/persist ---------------- */
+function loadStorage(){try{cards=JSON.parse(localStorage.getItem('cards')||'[]')||[];templates=JSON.parse(localStorage.getItem('templates')||'[]')||[]}catch(e){cards=[];templates=[]}}
+function persist(){localStorage.setItem('cards',JSON.stringify(cards));localStorage.setItem('templates',JSON.stringify(templates))}
+
+/* ---------------- fold state helpers ---------------- */
+function loadFoldStore(){try{return JSON.parse(localStorage.getItem(FOLD_STORE_KEY)||'{}')||{}}catch(e){return {}}}
+function saveFoldStore(s){try{localStorage.setItem(FOLD_STORE_KEY,JSON.stringify(s));return true}catch(e){console.error(e);return false}}
+function setFoldState(cardId, key, isOpen){
+  const s=loadFoldStore(); if(!s[cardId]) s[cardId]={}; s[cardId][key]=!!isOpen; saveFoldStore(s);
+}
+function getFoldState(cardId, key){const s=loadFoldStore(); return !!(s && s[cardId] && s[cardId][key]);}
+
+/* ---------------- init ---------------- */
+/* Clean, single DOMContentLoaded initialization that ensures migration runs before render */
+document.addEventListener('DOMContentLoaded', async () => {
+  try{
+    // migrate localStorage imageStore -> IndexedDB if needed
+    await migrateLocalImageStoreToIndexedDB();
+  }catch(e){ console.warn('migration issue', e); }
+  // load data & wire events
+  loadStorage();
+  wire();
+  renderCategoryOptions();
+  renderCards();
+  renderTemplates();
+  q('imgInput').addEventListener('change',()=>{/* no preview */});
+  q('thumbInput').addEventListener('change',()=>{/* no preview */});
+});
+
+/* ---------------- wiring ---------------- */
+function wire(){
+  // Remove duplicate event binding risks by re-binding safely
+  const bind = (el, evt, fn) => { if(!el) return; el.removeEventListener(evt, fn); el.addEventListener(evt, fn); };
+
+  bind(q('saveBtn'), 'click', onSaveClicked);
+  bind(q('clearBtn'), 'click', clearForm);
+
+  // ---- iPhone/Chrome 対応：強固な ZIP エクスポートハンドラ ----
+  bind(q('exportBtn'), 'click', async () => {
+    try {
+      // ユーザー操作と関連づけるための簡易表示（iOSの許可ポリシー回避用）
+      const preparing = document.createElement("div");
+      preparing.innerText = "バックアップを準備中…";
+      preparing.style.position = "fixed";
+      preparing.style.top = "50%";
+      preparing.style.left = "50%";
+      preparing.style.transform = "translate(-50%, -50%)";
+      preparing.style.padding = "18px 20px";
+      preparing.style.background = "#000d";
+      preparing.style.color = "#fff";
+      preparing.style.borderRadius = "10px";
+      preparing.style.zIndex = "99999";
+      document.body.appendChild(preparing);
+
+      const zip = new JSZip();
+
+      // data.json（cards + templates）
+      const data = { cards, templates };
+      zip.file("data.json", JSON.stringify(data, null, 2));
+
+      // images folder
+      const imgFolder = zip.folder("images");
+
+      const db = await openImageDB();
+      const tx = db.transaction('images', 'readonly');
+      const store = tx.objectStore('images');
+      const req = store.openCursor();
+
+      // iterate and append blobs
+      await new Promise(resolve => {
+        req.onsuccess = async (e) => {
+          const cur = e.target.result;
+          if (cur) {
+            const { id, dataUrl } = cur.value;
+            try {
+              const blob = await (await fetch(dataUrl)).blob();
+              // save with id and original-ish extension (jpg default)
+              imgFolder.file(`${id}.jpg`, blob);
+            } catch (err) {
+              console.warn('image fetch->blob failed for', id, err);
+            }
+            // small yield so UI doesn't lock for many images
+            cur.continue();
+          } else {
+            resolve();
+          }
+        };
+        req.onerror = (e) => {
+          console.error('cursor error', e);
+          resolve();
+        };
+      });
+
+      // generate zip blob
+      const zipBlob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
+
+      // iOS系で確実にダウンロードさせるため、DOMに追加してから click()
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "backup.zip";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+
+      // cleanup after a short delay
+      setTimeout(() => {
+        try{ URL.revokeObjectURL(url); }catch(e){}
+        try{ a.remove(); }catch(e){}
+      }, 2500);
+
+      preparing.remove();
+      alert("ZIP バックアップをダウンロードしました！");
+    } catch (e) {
+      console.error(e);
+      alert("バックアップ中にエラーが発生しました");
+    }
+  });
+
+  // Import button: keep onclick attribute and also bind
+  if(q('importBtn')) { q('importBtn').removeEventListener('click', onImportClicked); q('importBtn').addEventListener('click', onImportClicked) }
+  bind(q('search'), 'input', renderCards);
+  bind(q('filterCategory'), 'change', renderCards);
+  bind(q('icsGenBtn'), 'click', onIcsGenerate);
+  bind(q('icsCancelBtn'), 'click', closeIcsModal);
+  bind(q('icsPreset'), 'change', (e)=>{ q('icsCustomDays').style.display = e.target.value === 'custom' ? 'inline-block' : 'none' });
+
+  window.addEventListener('storage',(e)=>{ if(e.key==='cards'||e.key==='templates'||e.key===IMAGE_STORE_KEY||e.key===FOLD_STORE_KEY){ loadStorage(); renderCategoryOptions(); renderCards(); renderTemplates(); } });
+
+  q('search')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();renderCards()}});
+
+  // expose some functions for inline handlers
+  window.toggleAccordion = toggleAccordion;
+  window.useTemplate = useTemplate;
+  window.deleteTemplate = deleteTemplate;
+  window.onEditCard = onEditCard;
+  window.onDeleteCard = onDeleteCard;
+  window.openIcsModal = openIcsModal;
+  window.onSaveTemplateFromCard = onSaveTemplateFromCard;
+  window.toggleFold = toggleFold;
+}
+
+/* ---------------- items UI ---------------- */
+function addItem(type,label='',value=''){
+  const c=q('itemsContainer');
+  const d=document.createElement('div');
+  d.className='item-group';
+  d.dataset.type=type;
+  d.innerHTML=`
+    <input class="itemLabel" placeholder="項目名" value="${escapeHtml(label)}"/>
+    <textarea class="itemValue" placeholder="${type==='url'?'URL':'メモ'}">${escapeHtml(value)}</textarea>
+    <div style="margin-top:6px;display:flex;gap:6px">
+      <button type="button" class="secondary small" onclick="this.closest('.item-group').remove()">削除</button>
+    </div>`;
+  c.appendChild(d);
+}
+
+/* ---------------- date helpers ---------------- */
+const WEEKDAYS=['日','月','火','水','木','金','土'];
+function formatDateWithWeekday(d){if(!d) return '-';const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const dd=String(d.getDate()).padStart(2,'0');const wd=WEEKDAYS[d.getDay()];return `${y}/${m}/${dd}（${wd}）`}
+
+/* ---------------- anniversary compute ---------------- */
+/* Updated to count from 0年目 */
+function computeAnniversaryInfo(originalDateStr){
+  if(!originalDateStr) return {hasAnniv:false};
+  const msPerDay=1000*60*60*24;
+  const start=new Date(originalDateStr+'T00:00:00');
+  const today=new Date();
+  const todayMid=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  const startMid=new Date(start.getFullYear(),start.getMonth(),start.getDate());
+  const diffDays=Math.floor((todayMid-startMid)/msPerDay);
+  // current anniversary number starting from 0
+  const currentAnnivNumber = diffDays>=0 ? Math.floor(diffDays/365) : 0;
+  const nextAnnivNumber = currentAnnivNumber + 1;
+  // next anniversary date: start date + nextAnnivNumber years
+  const nextAnniv = new Date(startMid);
+  nextAnniv.setFullYear(startMid.getFullYear() + nextAnnivNumber);
+  const remainingMs = nextAnniv - todayMid;
+  const remainingDays = Math.ceil(remainingMs/msPerDay);
+  const thisYearAnn = new Date(startMid);
+  thisYearAnn.setFullYear(startMid.getFullYear() + currentAnnivNumber);
+  const isToday = thisYearAnn.getTime() === todayMid.getTime();
+  return {
+    hasAnniv:true,
+    startDate:startMid,
+    startDateFormatted:formatDateWithWeekday(startMid),
+    daysElapsed:diffDays>=0?diffDays:0,
+    yearsElapsed:currentAnnivNumber,      // current: 0周年～
+    nextAnnivNumber:nextAnnivNumber,      // next: 1周年～
+    nextAnnivDate:nextAnniv,
+    nextAnnivFormatted:formatDateWithWeekday(nextAnniv),
+    remainingDays:remainingDays,
+    isToday:isToday
+  };
+}
+
+/* ---------------- save (create/update) ---------------- */
+async function onSaveClicked(){
+  const title=q('title').value.trim();
+  if(!title){alert('タイトルを入力してください');return}
+  let category=q('category').value.trim(); if(!category) category='その他';
+  const anniv=q('anniv').value||'';
+  const items=Array.from(document.querySelectorAll('#itemsContainer .item-group')).map(g=>({type:g.dataset.type,label:g.querySelector('.itemLabel').value.trim(),value:g.querySelector('.itemValue').value})).filter(it=>(it.label || (it.value && it.value.trim()!=='')));
+  const existingIds=Array.isArray(currentExistingImageIds)?currentExistingImageIds.slice():[];
+  const existingThumbId=currentExistingThumbId||null;
+  const files=Array.from(q('imgInput').files||[]);
+  const newIds=[];
+  for(const f of files){
+    try{
+      const dataUrl=await fileToResizedDataURL(f);
+      const id=await saveDataUrlToStore(dataUrl);
+      if(id) newIds.push(id);
+    }catch(e){console.warn('img save fail',e)}
+  }
+  let newThumbId=null;
+  const thumbFile=(q('thumbInput').files&&q('thumbInput').files[0])||null;
+  if(thumbFile){
+    try{
+      const dataUrl=await fileToResizedDataURL(thumbFile);
+      newThumbId=await saveDataUrlToStore(dataUrl);
+    }catch(e){console.warn('thumb save fail',e)}
+  }
+  const imageIds=[...existingIds,...newIds];
+  const thumbId=newThumbId||existingThumbId||null;
+  const ts=now();
+
+  if(editingId){
+    const idx=cards.findIndex(c=>c.id===editingId);
+    if(idx!==-1){
+      const createdAt=cards[idx].createdAt||ts;
+      cards[idx]={id:editingId,title,category,anniv,items,imageIds,thumbId,createdAt,updatedAt:ts};
+    }else{
+      cards.push({id:makeId(),title,category,anniv,items,imageIds,thumbId,createdAt:ts,updatedAt:ts});
+    }
+    editingId=null;
+  }else{
+    const id=makeId();
+    cards.push({id,title,category,anniv,items,imageIds,thumbId,createdAt:ts,updatedAt:ts});
+  }
+  currentExistingImageIds=[]; currentExistingThumbId=null;
+  persist();
+  renderCategoryOptions();
+  renderCards();
+  renderTemplates();
+  clearForm();
+  alert('保存しました');
+}
+
+/* ---------------- render cards (with search & filter) ---------------- */
+async function renderCards(){
+  const container=q('cardsContainer'); container.innerHTML='';
+  const qtext=(q('search').value||'').toLowerCase();
+  const filterCat=(q('filterCategory').value||'').trim();
+  const cardInfos=cards.map(card=>({card,ann:computeAnniversaryInfo(card.anniv)}));
+  const filtered=cardInfos.filter(ci=>{
+    const cat=(ci.card.category&&ci.card.category.trim())?ci.card.category.trim():'その他';
+    let combined=""; combined+=(ci.card.title||"")+" "; combined+=(cat||"")+" "; (ci.card.items||[]).forEach(it=>{combined+=(it.label||"")+" "; combined+=(it.value||"")+" ";});
+    combined=combined.toLowerCase();
+    if(qtext){
+      const orParts=qtext.split("|").map(p=>p.trim()).filter(p=>p);
+      let orMatched=false;
+      for(const op of orParts){
+        const andParts=op.split(" ").map(p=>p.trim()).filter(p=>p);
+        let andMatched=true;
+        for(const ap of andParts){
+          if(!combined.includes(ap)){andMatched=false;break}
+        }
+        if(andMatched){ orMatched=true; break }
+      }
+      if(!orMatched) return false;
+    }
+    if(filterCat&&cat!==filterCat) return false;
+    return true;
+  });
+
+  const todayList=[], soonList=[], others=[];
+  for(const ci of filtered){
+    if(ci.ann.hasAnniv&&ci.ann.isToday) todayList.push(ci);
+    else if(ci.ann.hasAnniv&&ci.ann.remainingDays>=0&&ci.ann.remainingDays<=7) soonList.push(ci);
+    else others.push(ci);
+  }
+  todayList.sort((a,b)=>(b.card.createdAt||0)-(a.card.createdAt||0));
+  soonList.sort((a,b)=>(a.ann.remainingDays||0)-(b.ann.remainingDays||0));
+  others.sort((a,b)=>(b.card.createdAt||0)-(a.card.createdAt||0));
+  const ordered=[...todayList,...soonList,...others];
+
+  for(const ci of ordered){
+    const card=ci.card; const ann=ci.ann;
+    const el=document.createElement('div'); el.className='card';
+    let html='';
+    html+=`<div class="card-top">`;
+    html+=`<div style="flex:1;min-width:0">`;
+    if(ann.hasAnniv&&ann.isToday&&card.thumbId){
+      html+=`<div class="thumb-top" id="top-thumb-${card.id}">読み込み中</div>`;
+      html+=`<div class="title" style="margin-top:8px">${escapeHtml(card.title)}</div>`;
+    }else if(ann.hasAnniv&&ann.isToday&&!card.thumbId){
+      html+=`<div style="display:flex;align-items:center;gap:8px"><span class="badge-today">🎉 記念日当日！</span><div class="title" style="margin:0">${escapeHtml(card.title)}</div></div>`;
+    }else{
+      html+=`<div class="title">${escapeHtml(card.title)}</div>`;
+    }
+    html+=`</div>`;
+    const catDisplay=(card.category&&card.category.trim())?card.category.trim():'その他';
+    html+=`<div style="width:220px;flex-shrink:0">`;
+    if(ann.hasAnniv){
+      html+=`<div class="meta">記念日: ${escapeHtml(ann.startDateFormatted)}</div>`;
+      if(ann.daysElapsed&&ann.daysElapsed>0) html+=`<div class="meta">経過日数: ${ann.daysElapsed} 日</div>`;
+      if(typeof ann.yearsElapsed!=='undefined') html+=`<div class="meta">現在: ${ann.yearsElapsed} 周年</div>`;
+      if(typeof ann.nextAnnivNumber!=='undefined') html+=`<div class="meta">次: ${ann.nextAnnivNumber} 周年</div>`;
+      if(typeof ann.remainingDays==='number'&&ann.remainingDays>0){
+        html+=`<div class="meta">次の周年: ${escapeHtml(ann.nextAnnivFormatted)} ／ 残り: ${ann.remainingDays} 日</div>`;
+      }else{
+        html+=`<div class="meta">次の周年: ${escapeHtml(ann.nextAnnivFormatted)}</div>`;
+      }
+    }else{
+      html+=`<div class="meta">記念日: -</div>`;
+    }
+    html+=`</div>`;
+    html+=`</div>`; // card-top
+
+    html+=`<div style="display:flex;flex-direction:column;gap:8px">`;
+    html+=`<div class="meta">カテゴリー: ${escapeHtml(catDisplay)}</div>`;
+
+    // NEW: items displayed as label + "＋" ボタン that opens popup
+    if(Array.isArray(card.items)&&card.items.length){
+      for(let i=0;i<card.items.length;i++){
+        const it=card.items[i];
+        const key=`idx-${i}`;
+        const safeLabel=escapeHtml(it.label||'');
+        const displayLabel = safeLabel || (it.type==='url' ? 'URL' : 'メモ');
+        const rawValue = it.value || '';
+        // data-value uses encodeURIComponent to safely transport content
+        const dataValue = encodeURIComponent(rawValue);
+        html += `
+          <div class="item-row" title="${escapeAttr(displayLabel)}">
+            <div class="label" style="flex:1; margin-right:12px; color:#ddd">${escapeHtml(displayLabel)}</div>
+            <button class="trigger-btn" data-label="${escapeAttr(displayLabel)}" data-type="${it.type}" data-value="${dataValue}" onclick="openContentModalFromButton(this)">＋</button>
+          </div>
+        `;
+      }
+    }
+
+    html+=`<div class="thumb-carousel" id="thumb-${card.id}"></div>`;
+    html+=`<div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">`;
+    html+=`<button onclick="onEditCard('${card.id}')">編集</button>`;
+    html+=`<button onclick="openIcsModal('${card.id}')">カレンダーに登録</button>`;
+    html+=`<button class="secondary" onclick="onDeleteCard('${card.id}')">削除</button>`;
+    html+=`<button class="secondary" onclick="onSaveTemplateFromCard('${card.id}')">テンプレ保存</button>`;
+    html+=`</div>`;
+    html+=`</div>`; // inner column
+
+    el.innerHTML=html;
+    container.appendChild(el);
+
+    // apply thumb and set up fold initial states (folds kept for compatibility)
+    if(ann.hasAnniv&&ann.isToday&&card.thumbId){
+      (async ()=>{const dataUrl=await getDataUrlById(card.thumbId);const wrap=q(`top-thumb-${card.id}`);if(!dataUrl){ if(wrap) wrap.innerHTML=`<div style="color:#ccc">サムネ読み込み失敗</div>`; } else{ if(wrap){ wrap.innerHTML=`<img src="${dataUrl}" alt="thumb">`; wrap.addEventListener('click',()=>{ if(Array.isArray(card.imageIds)&&card.imageIds.length) openModal(card.imageIds,card.imageIds[0]); else openDetailModal(card) }) } }})();
+    }
+
+    // thumbs
+    const thumbWrap=q(`thumb-${card.id}`);
+    if(Array.isArray(card.imageIds)&&card.imageIds.length){
+      for(const imgId of card.imageIds){
+        const d=document.createElement('div'); d.className='thumb';
+        d.innerHTML=`<div style="width:92px;height:72px;display:flex;align-items:center;justify-content:center;color:#777">読み込み中</div>`;
+        thumbWrap.appendChild(d);
+        (async(node,id)=>{const dataUrl=await getDataUrlById(id);if(!dataUrl){ node.innerHTML=`<div style="width:92px;height:72px;background:#050505;border-radius:6px;color:#777;display:flex;align-items:center;justify-content:center">画像なし</div>`; return; } node.innerHTML=`<img src="${dataUrl}" alt="img-thumb">`; node.addEventListener('click',()=>openModal(card.imageIds,id));})(d,imgId);
+      }
+    }else{ thumbWrap.innerHTML=`<div class="muted">画像なし</div>`; }
+
+    // Initialize fold bodies if present (we didn't create fold-body for items)
+    const foldBodies = el.querySelectorAll('.fold-body');
+    foldBodies.forEach((body)=>{const cardId = body.dataset.cardid; const key = body.dataset.key; const shouldOpen = getFoldState(cardId, key); const header = body.previousElementSibling; if(shouldOpen){ body.classList.add('open'); body.style.maxHeight = body.scrollHeight + 'px'; if(header){ const ic = header.querySelector('.fold-icon'); if(ic) ic.textContent='－'; } } else { body.classList.remove('open'); body.style.maxHeight = null; if(header){ const ic = header.querySelector('.fold-icon'); if(ic) ic.textContent='＋'; } } });
+  }
+}
+
+/* ---------------- edit/delete/template ---------------- */
+// render thumbnails in edit form (with delete buttons)
+async function renderEditPreviews(){
+  const imgsWrap = q('imagesPreview');
+  const thumbWrap = q('thumbPreview');
+  if(imgsWrap) imgsWrap.innerHTML = '';
+  if(thumbWrap) thumbWrap.innerHTML = '';
+  // images
+  if(Array.isArray(currentExistingImageIds) && currentExistingImageIds.length){
+    for(const id of currentExistingImageIds){
+      (async (imgId)=>{
+        const dataUrl = await getDataUrlById(imgId);
+        const div = document.createElement('div');
+        div.style = "display:inline-block;margin-right:8px;position:relative";
+        const imgHtml = dataUrl ? `<img src="${dataUrl}" style="width:92px;height:72px;object-fit:cover;border-radius:6px">` : `<div style="width:92px;height:72px;background:#050505;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#777">画像なし</div>`;
+        div.innerHTML = imgHtml + `<button type="button" class="secondary" style="position:absolute;top:4px;right:4px;padding:4px;border-radius:6px;" onclick="(async function(){ if(confirm('この画像を削除しますか？')){ try{ await deleteDataUrlById('${imgId}'); const idx = currentExistingImageIds.indexOf('${imgId}'); if(idx!==-1) currentExistingImageIds.splice(idx,1); await renderEditPreviews(); }catch(e){console.error(e); alert('削除に失敗しました') } } })()">✕</button>`;
+        imgsWrap.appendChild(div);
+      })(id);
+    }
+    imgsWrap.style.display = 'block';
+  } else {
+    if(imgsWrap){ imgsWrap.innerHTML = ''; imgsWrap.style.display='none'; }
+  }
+  // thumb
+  if(currentExistingThumbId){
+    (async (tId)=>{
+      const dataUrl = await getDataUrlById(tId);
+      const div = document.createElement('div');
+      div.style = "display:inline-block;margin-right:8px;position:relative";
+      const imgHtml = dataUrl ? `<img src="${dataUrl}" style="width:92px;height:72px;object-fit:cover;border-radius:6px">` : `<div style="width:92px;height:72px;background:#050505;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#777">画像なし</div>`;
+      div.innerHTML = imgHtml + `<button type="button" class="secondary" style="position:absolute;top:4px;right:4px;padding:4px;border-radius:6px;" onclick="(async function(){ if(confirm('サムネを削除しますか？')){ try{ await deleteDataUrlById('${tId}'); currentExistingThumbId = null; await renderEditPreviews(); }catch(e){console.error(e); alert('削除に失敗しました') } } })()">✕</button>`;
+      if(thumbWrap){ thumbWrap.appendChild(div); thumbWrap.style.display='block'; }
+    })(currentExistingThumbId);
+  } else {
+    if(thumbWrap){ thumbWrap.innerHTML=''; thumbWrap.style.display='none'; }
+  }
+}
+
+function onEditCard(id){
+  const idx=cards.findIndex(c=>c.id===id);
+  if(idx===-1) return alert('編集対象が見つかりません');
+  const c=cards[idx];
+  editingId=id;
+  q('title').value=c.title||'';
+  q('category').value=c.category||'';
+  q('anniv').value=c.anniv||'';
+  q('itemsContainer').innerHTML='';
+  (c.items||[]).forEach(it=>addItem(it.type,it.label,it.value));
+  currentExistingImageIds=Array.isArray(c.imageIds)?c.imageIds.slice():[];
+  currentExistingThumbId=c.thumbId||null;
+  q('imgInput').value=''; q('thumbInput').value='';
+  renderEditPreviews();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function onDeleteCard(id){
+  if(!confirm('本当に削除しますか？ このカードの画像（サムネ含む）も localStorage から削除されます。')) return;
+  const idx=cards.findIndex(c=>c.id===id);
+  if(idx===-1) return;
+  const imgIds=cards[idx].imageIds||[]; const thumbId=cards[idx].thumbId||null;
+  for(const iid of imgIds){ try{ await deleteDataUrlById(iid) }catch(e){console.warn('img del fail',e) } }
+  if(thumbId){ try{ await deleteDataUrlById(thumbId) }catch(e){console.warn('thumb del fail',e) } }
+  // remove fold states for this card
+  const s=loadFoldStore(); if(s && s[id]){ delete s[id]; saveFoldStore(s); }
+  cards.splice(idx,1); persist(); renderCategoryOptions(); renderCards(); renderTemplates();
+}
+
+/* ... (templates, renderTemplates, deleteTemplate, useTemplate unchanged) ... */
+
+function onSaveTemplateFromCard(id){
+  const idx=cards.findIndex(c=>c.id===id);
+  if(idx===-1) return alert('テンプレ元が見つかりません');
+  const copy=JSON.parse(JSON.stringify(cards[idx]));
+  const tpl={...copy,id:makeId(),createdAt:now()};
+  templates.push(tpl); persist(); renderTemplates(); alert('テンプレ保存しました');
+}
+
+function renderTemplates(){
+  const box=q('templateList');
+  if(!box) return;
+  box.innerHTML='';
+  if(!templates.length){ box.innerHTML='<div class="muted">テンプレートがありません</div>'; return; }
+  templates.forEach((t)=>{
+    const row=document.createElement('div');
+    row.style='display:flex;justify-content:space-between;background:#0c0c0c;padding:8px;border-radius:8px;margin-bottom:6px';
+    row.innerHTML=`
+      <div style="max-width:70%"><strong>${escapeHtml(t.title||'(無題)')}</strong><div class="muted" style="margin-top:4px">${escapeHtml(t.category||'')}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="small secondary" onclick="useTemplate('${t.id}')">使用</button>
+        <button class="small secondary" onclick="deleteTemplate('${t.id}')">削除</button>
+      </div>`;
+    box.appendChild(row);
+  });
+}
+
+function deleteTemplate(id){
+  if(!confirm('テンプレートを削除しますか？')) return;
+  const idx=templates.findIndex(t=>t.id===id);
+  if(idx===-1) return;
+  templates.splice(idx,1); persist(); renderTemplates();
+}
+
+function useTemplate(id){
+  const idx=templates.findIndex(t=>t.id===id);
+  if(idx===-1) return alert('テンプレートが見つかりません');
+  const t=templates[idx];
+  editingId=null;
+  q('title').value=t.title||'';
+  q('category').value=t.category||'';
+  q('anniv').value=t.anniv||'';
+  q('itemsContainer').innerHTML='';
+  (t.items||[]).forEach(it=>addItem(it.type,it.label,it.value));
+  currentExistingImageIds=Array.isArray(t.imageIds)?t.imageIds.slice():[];
+  currentExistingThumbId=t.thumbId||null;
+  q('imgInput').value=''; q('thumbInput').value='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ---------------- import/export ---------------- */
+/* ZIP インポート（大容量対応） */
+async function onImportClicked() {
+  try {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".zip";
+
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(file);
+      } catch (ze) {
+        console.error('ZIP read failed', ze);
+        return alert('ZIPを読み込めませんでした');
+      }
+
+      // ---- data.json 読み込み ----
+      const dataFile = zip.file("data.json");
+      if (!dataFile) {
+        return alert("data.json が ZIP に含まれていません");
+      }
+      const jsonText = await dataFile.async("string");
+      let json;
+      try {
+        json = JSON.parse(jsonText);
+      } catch (err) {
+        console.error('data.json parse error', err);
+        return alert('data.json の解析に失敗しました');
+      }
+
+      if (!Array.isArray(json.cards)) return alert("cards が存在しません");
+      if (!Array.isArray(json.templates)) return alert("templates が存在しません");
+
+      cards = json.cards;
+      templates = json.templates;
+
+      // ---- 画像の復元 ----
+      const imageFiles = Object.keys(zip.files).filter(f => f.startsWith("images/") && !zip.files[f].dir);
+
+      for (const filename of imageFiles) {
+        const id = filename.replace("images/", "").replace(/\.(jpg|jpeg|png|gif|webp)$/i, "");
+        try {
+          const blob = await zip.file(filename).async("blob");
+
+          // Blob -> dataURL
+          const dataUrl = await new Promise((res) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result);
+            reader.readAsDataURL(blob);
+          });
+
+          await saveDataUrlToStore(dataUrl, id);
+        } catch (err) {
+          console.warn('failed to restore image:', filename, err);
+        }
+      }
+
+      persist();
+      renderCategoryOptions();
+      await renderCards();
+      renderTemplates();
+
+      alert("ZIP インポートが完了しました！");
+    };
+
+    fileInput.click();
+  } catch (e) {
+    console.error(e);
+    alert("インポート中にエラーが発生しました");
+  }
+}
+
+/* ---------------- category ---------------- */
+
+function renderCategoryOptions(){
+  const sel=q('filterCategory'); if(!sel) return;
+  const cats=[...new Set(cards.map(c=> (c.category && c.category.trim())?c.category.trim():'その他'))].filter(Boolean);
+  sel.innerHTML='<option value="">全カテゴリー</option>';
+  cats.forEach(cat=>{ const o=document.createElement('option'); o.value=cat; o.textContent=cat; sel.appendChild(o) });
+}
+
+/* ---------------- clear ---------------- */
+function clearForm(){
+  editingId=null; q('title').value=''; q('category').value=''; q('anniv').value=''; q('itemsContainer').innerHTML='';
+  q('imagesPreview').innerHTML=''; q('thumbPreview').innerHTML=''; q('imgInput').value=''; q('thumbInput').value=''; q('imagesPreview').style.display='none'; q('thumbPreview').style.display='none';
+  currentExistingImageIds=[]; currentExistingThumbId=null;
+}
+
+/* ---------------- modal gallery ---------------- */
+let modalImageIds=[], modalCurrentIndex=0;
+async function openModal(imageIds,clickedId){
+  modalImageIds=Array.isArray(imageIds)?imageIds:[];
+  modalCurrentIndex=modalImageIds.indexOf(clickedId);
+  if(modalCurrentIndex<0) modalCurrentIndex=0;
+  q('modalBg').style.display='flex';
+  await showModalImage();
+}
+async function showModalImage(){
+  if(!modalImageIds.length){ q('modalImgWrap').innerHTML='<div style="color:#ccc">画像なし</div>'; q('modalCaption').textContent=''; return; }
+  const id=modalImageIds[modalCurrentIndex];
+  const dataUrl=await getDataUrlById(id);
+  if(!dataUrl){ q('modalImgWrap').innerHTML='<div style="color:#ccc">画像を取得できません</div>'; q('modalCaption').textContent=`${modalCurrentIndex+1} / ${modalImageIds.length}`; return; }
+  q('modalImgWrap').innerHTML=`<img src="${dataUrl}" alt="大画像">`;
+  q('modalCaption').textContent=`${modalCurrentIndex+1} / ${modalImageIds.length}`;
+}
+function closeModal(){ q('modalBg').style.display='none'; q('modalImgWrap').innerHTML=''; modalImageIds=[]; modalCurrentIndex=0 }
+function modalPrev(){ if(!modalImageIds.length) return; modalCurrentIndex=(modalCurrentIndex-1+modalImageIds.length)%modalImageIds.length; showModalImage() }
+function modalNext(){ if(!modalImageIds.length) return; modalCurrentIndex=(modalCurrentIndex+1)%modalImageIds.length; showModalImage() }
+function openDetailModal(card){
+  q('modalBg').style.display='flex';
+  q('modalImgWrap').innerHTML=`<div style="padding:16px;color:#ddd;text-align:left"><h2 style="color:${'#c99a2b'}">${escapeHtml(card.title)}</h2><div style="margin-top:8px">カテゴリー: ${escapeHtml(card.category||'その他')}</div><div style="margin-top:8px">記念日: ${escapeHtml(card.ann||'-')}</div><div style="margin-top:8px">編集で詳細確認してください</div></div>`;
+  q('modalCaption').textContent='';
+}
+
+/* ---------------- ICS helpers ---------------- */
+function openIcsModal(cardId){
+  icsTargetCardId=cardId;
+  const idx=cards.findIndex(c=>c.id===cardId);
+  if(idx===-1) return alert('カードが見つかりません');
+  const c=cards[idx];
+  q('icsTitle').textContent=c.title||'(無題)';
+  q('icsPreset').value='1'; q('icsCustomDays').value=''; q('icsCustomDays').style.display='none';
+  q('icsStartTime').value=''; q('icsEndTime').value='';
+  document.getElementById('icsModal').style.display='block';
+  document.getElementById('icsModal').parentElement.style.display='flex';
+  document.getElementById('icsModal').parentElement.style.alignItems='center';
+  document.getElementById('icsModal').parentElement.style.justifyContent='center';
+}
+function closeIcsModal(){const wrapper=document.getElementById('icsModal').parentElement; wrapper.style.display='none'; document.getElementById('icsModal').style.display='none'; icsTargetCardId=null}
+function pad2(n){return String(n).padStart(2,'0')}
+function formatIcsDateTimeLocal(dateObj,timeStr){const t=(timeStr&&typeof timeStr==='string')?timeStr:'00:00';const [hh,mm]=t.split(':').map(x=>String(x||'0').padStart(2,'0'));const y=dateObj.getFullYear();const m=pad2(dateObj.getMonth()+1);const d=pad2(dateObj.getDate());return `${y}${m}${d}T${hh}${mm}00`}
+function buildIcsText(title,dateObj,triggerDays,startTimeStr,endTimeStr){
+  const dtstart=formatIcsDateTimeLocal(dateObj,startTimeStr);
+  const dtend=formatIcsDateTimeLocal(dateObj,endTimeStr||startTimeStr||'00:00');
+  const trigger=(triggerDays===0)?'PT0S':`-P${triggerDays}D`;
+  const uid=`${crypto.randomUUID()}@local`;
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//YourApp//AnnivCalendar//JP','CALSCALE:GREGORIAN','BEGIN:VEVENT',`UID:${uid}`,`SUMMARY:${title}`,`DTSTART:${dtstart}`,`DTEND:${dtend}`,'RRULE:FREQ=YEARLY','BEGIN:VALARM',`TRIGGER:${trigger}`,'ACTION:DISPLAY',`DESCRIPTION:記念日通知 (${title})`,'END:VALARM','END:VEVENT','END:VCALENDAR'];
+  return lines.join('\r\n');
+}
+function downloadIcs(filename,text){
+  const blob=new Blob([text],{type:'text/calendar;charset=utf-8'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function onIcsGenerate(){
+  if(!icsTargetCardId) return alert('対象カードが選ばれていません');
+  const idx=cards.findIndex(c=>c.id===icsTargetCardId);
+  if(idx===-1) return alert('カードが見つかりません');
+  const c=cards[idx];
+  const preset=q('icsPreset').value; let days=0;
+  if(preset==='custom'){ const v=parseInt(q('icsCustomDays').value||'0',10); if(isNaN(v)||v<0){alert('カスタムは0以上の数字を入力してください');return} days=v }
+  else { days=parseInt(preset,10); if(isNaN(days)) days=0 }
+  const annInfo=computeAnniversaryInfo(c.anniv);
+  const targetDate=annInfo.nextAnnivDate;
+  const startTime=q('icsStartTime').value||'00:00';
+  const endTime=q('icsEndTime').value||startTime||'00:00';
+  const icsText=buildIcsText(c.title||'(無題)',targetDate,days,startTime,endTime);
+  const filename=`${(c.title||'anniv').replace(/[^\w\-]/g,'_')}_anniv.ics`;
+  downloadIcs(filename,icsText); closeIcsModal(); alert('ICSファイルを生成しました。');
+}
+
+/* ---------------- accordion ---------------- */
+function toggleAccordion(){
+  const acc=document.getElementById('templateAccordion');
+  const icon=document.getElementById('accordionIcon');
+  if(acc.classList.contains('open')){
+    acc.classList.remove('open'); icon.textContent='＋';
+    acc.querySelector('.accordion-body').style.maxHeight = null;
+  }else{
+    acc.classList.add('open'); icon.textContent='－';
+    const body=acc.querySelector('.accordion-body');
+    body.style.maxHeight = body.scrollHeight + 'px';
+  }
+}
+
+/* ---------------- fold toggle (card internal) ---------------- */
+function toggleFold(headerEl){
+  try{
+    const body = headerEl.nextElementSibling;
+    const cardId = headerEl.dataset.cardid || body?.dataset.cardid;
+    const key = headerEl.dataset.key || body?.dataset.key;
+    if(!body || !cardId || !key) {
+      // fallback: try from element attributes
+      const b = headerEl.nextElementSibling;
+      if(!b) return;
+    }
+    const icon = headerEl.querySelector('.fold-icon');
+    const isOpen = body.classList.contains('open');
+    if(isOpen){
+      body.classList.remove('open');
+      body.style.maxHeight = null;
+      if(icon) icon.textContent='＋';
+      setFoldState(cardId,key,false);
+    } else {
+      body.classList.add('open');
+      body.style.maxHeight = body.scrollHeight + 'px';
+      if(icon) icon.textContent='－';
+      setFoldState(cardId,key,true);
+    }
+  }catch(e){console.error(e)}
+}
+
+/* ---------------- utility actions ---------------- */
+function exportAllToClipboard(){
+  const payload={cards,templates};
+  const txt=JSON.stringify(payload,null,2);
+  navigator.clipboard?.writeText(txt).then(()=>alert('コピーしました（クリップボード）'),()=>{prompt('データをコピーできませんでした。下のテキストを手動コピーしてください:',txt)});
+}
+function clearAllData(){
+  if(!confirm('ローカルの全データ（cards, templates, images, fold states）を削除しますか？')) return;
+  localStorage.removeItem('cards'); localStorage.removeItem('templates'); try{ localStorage.removeItem(IMAGE_STORE_KEY); }catch(e){}
+  // Also clear IndexedDB images store safely
+  (async ()=>{
+    try{
+      const db = await openImageDB();
+      const tx = db.transaction('images','readwrite');
+      tx.objectStore('images').clear();
+      tx.oncomplete = ()=>{ db.close(); loadStorage(); renderCategoryOptions(); renderCards(); renderTemplates(); alert('削除しました'); };
+    }catch(e){ console.warn('clearAllData indexedDB clear failed', e); alert('IndexedDB の削除に失敗しました。コンソールを確認してください。') }
+  })();
+}
+
+/* ---------------- NEW: URL / MEMO popup handlers ---------------- */
+function openContentModal(label, type, value){
+  const bg = q('contentModalBg');
+  const title = q('contentModalTitle');
+  const body = q('contentModalBody');
+  title.textContent = label || (type === 'url' ? 'URL' : 'メモ');
+  if(type === 'url'){
+    const safe = escapeHtml(value || '');
+    body.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-direction:column"><a href="${safe}" target="_blank" rel="noopener">${safe}</a><div style="width:100%;display:flex;justify-content:center;margin-top:8px"><button onclick="copyToClipboard('${escapeAttr(value||'')}')" class="small">リンクをコピー</button></div></div>`;
+  } else {
+    body.textContent = value || '';
+  }
+  bg.style.display = 'flex';
+  bg.setAttribute('aria-hidden','false');
+}
+function openContentModalFromButton(el){
+  try{
+    const label = el.dataset.label || '';
+    const type = el.dataset.type || 'memo';
+    const v = el.dataset.value || '';
+    const decoded = decodeURIComponent(v);
+    openContentModal(label, type, decoded);
+  }catch(e){ console.error(e); openContentModal('', 'memo', '') }
+}
+function closeContentModal(){ const bg = q('contentModalBg'); bg.style.display = 'none'; bg.setAttribute('aria-hidden','true'); }
+function copyToClipboard(text){ const t = String(text || ''); navigator.clipboard?.writeText(t).then(()=>{ alert('コピーしました'); }, ()=>{ prompt('コピーに失敗しました。手動でコピーしてください:', t); }); }
+
+/* ---------------- initial render ---------------- */
+loadStorage();
+renderCategoryOptions();
+renderTemplates();
+renderCards();
+
+</script>
+
+<div id="zipProgressModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:20000;align-items:center;justify-content:center;">
+  <div style="width:92%;max-width:520px;background:#0b0b0b;border-radius:12px;padding:18px;border:1px solid rgba(201,154,43,0.12);color:#fff;text-align:left;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong id="zipProgressTitle">バックアップを作成しています</strong>
+      <button onclick="hideZipProgress()" style="background:#222;color:#fff;border:none;padding:6px 10px;border-radius:8px;cursor:pointer">キャンセル</button>
+    </div>
+    <div style="margin-top:12px">
+      <div id="zipProgressText" style="font-size:13px;color:#ccc">準備中…</div>
+      <div style="margin-top:10px;background:#111;border-radius:8px;height:14px;overflow:hidden;">
+        <div id="zipProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#c99a2b,#ffcf6b);"></div>
+      </div>
+      <div id="zipProgressSub" style="margin-top:8px;font-size:12px;color:#999"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+
+<script>
+// ===== ZIP Complete System with Progress, Category, and Individual Support =====
+let _zipAbortRequested = false;
+
+function showZipProgress(title, initialText){
+  const modal = document.getElementById('zipProgressModal');
+  document.getElementById('zipProgressTitle').textContent = title;
+  document.getElementById('zipProgressText').textContent = initialText || '';
+  document.getElementById('zipProgressBar').style.width = '0%';
+  document.getElementById('zipProgressSub').textContent = '';
+  modal.style.display = 'flex';
+  _zipAbortRequested = false;
+}
+function updateZipProgress(p,t,s){
+  document.getElementById('zipProgressBar').style.width = p+'%';
+  if(t) document.getElementById('zipProgressText').textContent = t;
+  if(s!==undefined) document.getElementById('zipProgressSub').textContent = s;
+}
+function hideZipProgress(){
+  _zipAbortRequested = true;
+  document.getElementById('zipProgressModal').style.display = 'none';
+}
+
+function dataURLtoBlob(dataurl){
+  const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]); let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while(n--) u8arr[n] = bstr.charCodeAt(n);
+  return new Blob([u8arr],{type:mime});
+}
+
+async function createZipFromCards(cardsList, filename, onProgress){
+  const zip = new JSZip();
+  zip.file("data.json", JSON.stringify({cards:cardsList, templates:templates}, null, 2));
+  const imgFolder = zip.folder("images");
+
+  const ids = new Set();
+  cardsList.forEach(c => {
+    if(c.imageIds) c.imageIds.forEach(id => ids.add(id));
+    if(c.thumbId) ids.add(c.thumbId);
+  });
+
+  const imgArr = [...ids];
+  let count = 0;
+
+  for(const id of imgArr){
+    if(_zipAbortRequested) return;
+    const url = await getDataUrlById(id);
+    if(url){
+      const blob = dataURLtoBlob(url);
+      imgFolder.file(id+".jpg", blob);
+    }
+    count++;
+    onProgress(10 + Math.round(count/imgArr.length*60), `画像処理中 ${count}/${imgArr.length}`);
+  }
+
+  const zipBlob = await zip.generateAsync({
+    type:"blob", streamFiles:true,
+    compression:"DEFLATE", compressionOptions:{level:3}
+  });
+
+  const a = document.createElement("a");
+  const urlObj = URL.createObjectURL(zipBlob);
+  a.href = urlObj;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(urlObj); a.remove(); }, 1500);
+
+  onProgress(100,"完了");
+}
+
+async function exportAllWithProgress(){
+  showZipProgress("全体バックアップ実行","初期化中");
+  await createZipFromCards(cards, "backup_all.zip", updateZipProgress);
+  setTimeout(hideZipProgress,1000);
+}
+
+async function exportSelectedCategory(){
+  const cat = document.getElementById("filterCategory").value;
+  const group = cards.filter(c => (c.category||"その他") === cat);
+  if(!group.length) return alert("対象データなし");
+  showZipProgress("カテゴリバックアップ","準備中");
+  await createZipFromCards(group, `${cat}_backup.zip`, updateZipProgress);
+  setTimeout(hideZipProgress,1000);
+}
+
+async function exportByCategoryWithProgress(){
+  const cats = [...new Set(cards.map(c=>c.category||"その他"))];
+  if(!confirm(cats.length+"カテゴリ分作成しますか？")) return;
+  for(const cat of cats){
+    const group = cards.filter(c => (c.category||"その他")===cat);
+    await createZipFromCards(group, `${cat}_backup.zip`, updateZipProgress);
+  }
+  hideZipProgress();
+}
+
+function bindBackupButtons(){
+  exportAllBtn.onclick = exportAllWithProgress;
+  exportByCategoryBtn.onclick = exportByCategoryWithProgress;
+  exportSelectedCategoryBtn.onclick = exportSelectedCategory;
+}
+
+setTimeout(bindBackupButtons,200);
+</script>
+
+</html>
